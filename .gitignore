@@ -42,9 +42,9 @@ env/
 htmlcov/
 .tox/
 
-# Data
-data/
-datasets/
+# Downloaded datasets (not source code)
+/data/
+/datasets/
 *.zip
 
 # Results
