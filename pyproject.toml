@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "rag_eval", from = "src"}]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = ">=3.11,<3.13"
 llama-index-core = "^0.10.0"
 llama-index-vector-stores-qdrant = "^0.2.0"
 sentence-transformers = "^2.2.0"
