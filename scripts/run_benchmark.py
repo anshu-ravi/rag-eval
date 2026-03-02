@@ -43,7 +43,7 @@ def load_dataset() -> BEIRSciFact:
     return dataset
 
 
-def run_retrieval_benchmark(output_path: str) -> None:
+def run_retrieval_benchmark(output_path: str, selected_strategies: list[str] | None = None) -> None:
     """Run full retrieval benchmark across all strategies.
 
     Args:
@@ -58,10 +58,17 @@ def run_retrieval_benchmark(output_path: str) -> None:
     qrels = dataset.get_qrels()
 
     # Test different chunking + retrieval combinations
-    strategies = [
+    all_strategies = [
         ("fixed_dense", FixedChunker(config.chunk_size, config.chunk_overlap)),
         ("recursive_dense", RecursiveChunker(config.chunk_size, config.chunk_overlap)),
     ]
+
+    # Filter strategies if specific ones are selected
+    if selected_strategies:
+        strategies = [(name, chunker) for name, chunker in all_strategies
+                     if name in selected_strategies]
+    else:
+        strategies = all_strategies
 
     results = []
 
@@ -109,47 +116,48 @@ def run_retrieval_benchmark(output_path: str) -> None:
         retriever.clear_collection()
 
     # Test hybrid retrieval
-    logger.info(f"\n{'='*60}")
-    logger.info("Testing hybrid retrieval")
-    logger.info(f"{'='*60}")
+    if not selected_strategies or "hybrid" in selected_strategies:
+        logger.info(f"\n{'='*60}")
+        logger.info("Testing hybrid retrieval")
+        logger.info(f"{'='*60}")
 
-    # Use recursive chunking for hybrid
-    chunker = RecursiveChunker(config.chunk_size, config.chunk_overlap)
-    chunked_docs = chunker.chunk(corpus_docs)
+        # Use recursive chunking for hybrid
+        chunker = RecursiveChunker(config.chunk_size, config.chunk_overlap)
+        chunked_docs = chunker.chunk(corpus_docs)
 
-    dense_retriever = DenseRetriever(
-        collection_name="scifact_hybrid_dense",
-        embedding_model=config.embedding_model,
-        qdrant_host=config.qdrant_host,
-        qdrant_port=config.qdrant_port,
-    )
-    sparse_retriever = SparseRetriever()
-    hybrid_retriever = HybridRetriever(dense_retriever, sparse_retriever)
+        dense_retriever = DenseRetriever(
+            collection_name="scifact_hybrid_dense",
+            embedding_model=config.embedding_model,
+            qdrant_host=config.qdrant_host,
+            qdrant_port=config.qdrant_port,
+        )
+        sparse_retriever = SparseRetriever()
+        hybrid_retriever = HybridRetriever(dense_retriever, sparse_retriever)
 
-    hybrid_retriever.index(chunked_docs)
+        hybrid_retriever.index(chunked_docs)
 
-    # Retrieve for all queries
-    retrieval_results = {}
-    for query_id, query_text in queries.items():
-        retrieval_results[query_id] = hybrid_retriever.retrieve(query_text, top_k=config.top_k)
+        # Retrieve for all queries
+        retrieval_results = {}
+        for query_id, query_text in queries.items():
+            retrieval_results[query_id] = hybrid_retriever.retrieve(query_text, top_k=config.top_k)
 
-    # Evaluate
-    metrics = compute_retrieval_metrics(qrels, retrieval_results, k=config.top_k)
+        # Evaluate
+        metrics = compute_retrieval_metrics(qrels, retrieval_results, k=config.top_k)
 
-    result = {
-        "strategy": "hybrid",
-        "chunker": "recursive",
-        "retriever": "hybrid_rrf",
-        "mrr_at_10": round(metrics.mrr_at_k, 4),
-        "ndcg_at_10": round(metrics.ndcg_at_k, 4),
-        "hit_rate_at_10": round(metrics.hit_rate_at_k, 4),
-        "n_queries": metrics.num_queries,
-    }
-    results.append(result)
-    logger.info(f"Results: {result}")
+        result = {
+            "strategy": "hybrid",
+            "chunker": "recursive",
+            "retriever": "hybrid_rrf",
+            "mrr_at_10": round(metrics.mrr_at_k, 4),
+            "ndcg_at_10": round(metrics.ndcg_at_k, 4),
+            "hit_rate_at_10": round(metrics.hit_rate_at_k, 4),
+            "n_queries": metrics.num_queries,
+        }
+        results.append(result)
+        logger.info(f"Results: {result}")
 
-    # Clean up
-    dense_retriever.clear_collection()
+        # Clean up
+        dense_retriever.clear_collection()
 
     # Save results
     output = {
@@ -350,11 +358,17 @@ def main() -> None:
         type=str,
         help="Provider for single mode (openai, anthropic, ollama)",
     )
+    parser.add_argument(
+        "--strategies",
+        type=str,
+        help="Comma-separated list of strategies to run (fixed_dense, recursive_dense, hybrid). If not specified, runs all.",
+    )
 
     args = parser.parse_args()
 
     if args.mode == "retrieval":
-        run_retrieval_benchmark(args.output)
+        selected_strategies = args.strategies.split(",") if args.strategies else None
+        run_retrieval_benchmark(args.output, selected_strategies)
     elif args.mode == "llm_comparison":
         run_llm_comparison(args.output)
     elif args.mode == "single":
