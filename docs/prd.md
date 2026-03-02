@@ -1,4 +1,4 @@
-# PRD: `production-rag-eval`
+# Project Requirements Document
 
 A production-grade RAG system with a rigorous evaluation framework, model-agnostic LLM abstraction, and benchmark results comparing retrieval strategies and LLM providers.
 
@@ -356,7 +356,7 @@ The README should read like a mini research report. Structure:
 
 ---
 
-## 12. Build Order for Claude Code
+## 12. Build Order
 
 Implement in this order to unblock testing at each step. **After completing each step, make a git commit with the message shown.** Do not batch commits — each step should be its own commit so the history tells a clear story.
 

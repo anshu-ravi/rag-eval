@@ -61,3 +61,9 @@ Thumbs.db
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb
+
+.python-version
+.claude/
+.vscode/
+CLAUDE.md
+CLAUDE.local.md
