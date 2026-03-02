@@ -70,8 +70,10 @@ class SparseRetriever(BaseRetriever):
         results = []
         for idx in top_indices:
             doc = self.documents[idx]
+            # Use source_doc_id from metadata for metrics matching
+            doc_id = doc.metadata.get("source_doc_id", doc.doc_id)
             result = RetrievalResult(
-                doc_id=doc.doc_id,
+                doc_id=doc_id,
                 score=float(scores[idx]),
                 text=doc.text,
             )

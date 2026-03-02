@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from llama_index.core import Document, VectorStoreIndex, StorageContext
+from llama_index.core import Document, StorageContext, VectorStoreIndex
 from llama_index.core.embeddings import BaseEmbedding
 from llama_index.core.vector_stores import VectorStoreQuery
 from llama_index.vector_stores.qdrant import QdrantVectorStore
+from pydantic import PrivateAttr
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 
@@ -20,6 +21,8 @@ logger = logging.getLogger(__name__)
 class SentenceTransformerEmbedding(BaseEmbedding):
     """Wrapper for sentence-transformers to work with LlamaIndex."""
 
+    _model: Any = PrivateAttr()
+
     def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
         """Initialize the embedding model.
 
@@ -27,8 +30,8 @@ class SentenceTransformerEmbedding(BaseEmbedding):
             model_name: Name of the sentence-transformers model.
         """
         super().__init__()
-        self.model = SentenceTransformer(model_name)
-        self._model_name = model_name
+        # use a pydantic PrivateAttr to store non-field attribute
+        self._model = SentenceTransformer(model_name)
 
     @classmethod
     def class_name(cls) -> str:
@@ -52,7 +55,7 @@ class SentenceTransformerEmbedding(BaseEmbedding):
         Returns:
             Query embedding as list of floats.
         """
-        embedding = self.model.encode(query, convert_to_numpy=True)
+        embedding = self._model.encode(query, convert_to_numpy=True)
         return embedding.tolist()
 
     def _get_text_embedding(self, text: str) -> list[float]:
@@ -76,7 +79,7 @@ class SentenceTransformerEmbedding(BaseEmbedding):
         Returns:
             List of embeddings.
         """
-        embeddings = self.model.encode(texts, convert_to_numpy=True)
+        embeddings = self._model.encode(texts, convert_to_numpy=True)
         return [emb.tolist() for emb in embeddings]
 
 
@@ -111,7 +114,7 @@ class DenseRetriever(BaseRetriever):
 
         # Vector store and index will be created during indexing
         self.vector_store: QdrantVectorStore | None = None
-        self.index: VectorStoreIndex | None = None
+        self.vector_index: VectorStoreIndex | None = None
 
         # Store documents for later retrieval
         self.documents: dict[str, Document] = {}
@@ -138,7 +141,7 @@ class DenseRetriever(BaseRetriever):
         storage_context = StorageContext.from_defaults(vector_store=self.vector_store)
 
         # Create index with custom embedding model
-        self.index = VectorStoreIndex.from_documents(
+        self.vector_index = VectorStoreIndex.from_documents(
             documents,
             storage_context=storage_context,
             embed_model=self.embed_model,
@@ -157,11 +160,11 @@ class DenseRetriever(BaseRetriever):
         Returns:
             List of retrieval results.
         """
-        if self.index is None:
+        if self.vector_index is None:
             raise ValueError("Index not created. Call index() first.")
 
         # Create a retriever from the index
-        retriever = self.index.as_retriever(similarity_top_k=top_k)
+        retriever = self.vector_index.as_retriever(similarity_top_k=top_k)
 
         # Retrieve nodes
         nodes = retriever.retrieve(query)
@@ -169,8 +172,10 @@ class DenseRetriever(BaseRetriever):
         # Convert to RetrievalResult
         results = []
         for node in nodes:
+            # Use source_doc_id from metadata for metrics matching
+            doc_id = node.metadata.get("source_doc_id", node.node_id)
             result = RetrievalResult(
-                doc_id=node.node_id,
+                doc_id=doc_id,
                 score=node.score if node.score is not None else 0.0,
                 text=node.get_content(),
             )
