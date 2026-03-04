@@ -33,6 +33,15 @@ class BaseLLMProvider(ABC):
         """
         pass
 
+    @abstractmethod
+    def health_check(self) -> bool:
+        """Check if the provider is available and healthy.
+
+        Returns:
+            True if the provider is available, False otherwise.
+        """
+        pass
+
     @property
     @abstractmethod
     def provider_name(self) -> str:

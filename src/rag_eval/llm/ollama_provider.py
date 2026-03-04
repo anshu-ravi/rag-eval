@@ -68,6 +68,20 @@ class OllamaProvider(BaseLLMProvider):
             completion_tokens=completion_tokens,
         )
 
+    def health_check(self) -> bool:
+        """Check if Ollama service is accessible.
+
+        Returns:
+            True if Ollama service is accessible, False otherwise.
+        """
+        try:
+            with httpx.Client(timeout=5.0) as client:
+                response = client.get(f"{self.base_url}/api/tags")
+                return response.status_code == 200
+        except Exception as e:
+            logger.error(f"Ollama health check failed: {e}")
+            return False
+
     @property
     def provider_name(self) -> str:
         """Return provider name."""

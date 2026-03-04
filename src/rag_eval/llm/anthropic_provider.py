@@ -59,6 +59,24 @@ class AnthropicProvider(BaseLLMProvider):
             completion_tokens=response.usage.output_tokens,
         )
 
+    def health_check(self) -> bool:
+        """Check if Anthropic API is accessible.
+
+        Returns:
+            True if API is accessible, False otherwise.
+        """
+        try:
+            # Try a simple message to check connectivity
+            self.client.messages.create(
+                model=self.model,
+                max_tokens=10,
+                messages=[{"role": "user", "content": "ping"}],
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Anthropic health check failed: {e}")
+            return False
+
     @property
     def provider_name(self) -> str:
         """Return provider name."""

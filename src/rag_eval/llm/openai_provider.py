@@ -54,6 +54,20 @@ class OpenAIProvider(BaseLLMProvider):
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
         )
 
+    def health_check(self) -> bool:
+        """Check if OpenAI API is accessible.
+
+        Returns:
+            True if API is accessible, False otherwise.
+        """
+        try:
+            # Try a simple list models call to check connectivity
+            self.client.models.list()
+            return True
+        except Exception as e:
+            logger.error(f"OpenAI health check failed: {e}")
+            return False
+
     @property
     def provider_name(self) -> str:
         """Return provider name."""
