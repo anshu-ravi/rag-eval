@@ -210,6 +210,31 @@ class TestRetrievalMetrics:
         assert metrics.mrr_at_k == 0.0
         assert metrics.hit_rate_at_k == 0.0
 
+    def test_ndcg_no_duplicates_from_chunking(self) -> None:
+        """Test NDCG stays <= 1.0 when multiple chunks share the same source doc_id.
+
+        This is the real-world case: a single corpus document is split into several
+        chunks that all carry the same source_doc_id.  Without deduplication every
+        chunk would add gain to DCG while IDCG only counts the document once,
+        driving NDCG above 1.0.
+        """
+        evaluator = RetrievalEvaluator(k=10)
+
+        # One relevant document in the qrels
+        qrels = {"q1": {"doc1": 1}}
+        # Three chunks all resolve to the same source doc_id "doc1"
+        results = {
+            "q1": [
+                RetrievalResult(doc_id="doc1", score=0.95, text="chunk A of doc1"),
+                RetrievalResult(doc_id="doc1", score=0.85, text="chunk B of doc1"),
+                RetrievalResult(doc_id="doc1", score=0.75, text="chunk C of doc1"),
+            ]
+        }
+
+        metrics = evaluator.evaluate(qrels, results)
+        assert metrics.ndcg_at_k <= 1.0
+        assert metrics.ndcg_at_k == pytest.approx(1.0, abs=0.01)
+
     def test_manual_ndcg_calculation(self) -> None:
         """Test NDCG with a manually calculated example."""
         evaluator = RetrievalEvaluator(k=3)

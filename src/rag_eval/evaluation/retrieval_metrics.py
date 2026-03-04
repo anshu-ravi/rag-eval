@@ -66,7 +66,16 @@ class RetrievalEvaluator:
                 logger.warning(f"No results for query {query_id}, skipping...")
                 continue
 
-            retrieved_docs = results[query_id][: self.k]
+            # Deduplicate by doc_id before slicing to k.
+            # Chunks from the same source document share a doc_id; counting each
+            # one in DCG while IDCG only counts the document once inflates NDCG > 1.
+            seen_doc_ids: set[str] = set()
+            deduped: list[RetrievalResult] = []
+            for r in results[query_id]:
+                if r.doc_id not in seen_doc_ids:
+                    seen_doc_ids.add(r.doc_id)
+                    deduped.append(r)
+            retrieved_docs = deduped[: self.k]
             relevant_docs = qrels[query_id]
 
             # Compute metrics for this query
