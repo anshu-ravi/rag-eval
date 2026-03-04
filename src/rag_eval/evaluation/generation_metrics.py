@@ -6,11 +6,11 @@ Uses LLM-as-judge to evaluate Faithfulness and Answer Relevance.
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
-from typing import Any
 
 from ragas import evaluate
-from ragas.metrics import faithfulness, answer_relevancy
+from ragas.metrics import answer_relevancy, faithfulness
 from datasets import Dataset
 
 from rag_eval.llm.base import BaseLLMProvider
@@ -35,13 +35,15 @@ class GenerationMetrics:
 class GenerationEvaluator:
     """Evaluate generation quality using RAGAS metrics."""
 
-    def __init__(self, llm_provider: BaseLLMProvider) -> None:
+    def __init__(self, llm_provider: BaseLLMProvider, openai_api_key: str | None = None) -> None:
         """Initialize generation evaluator.
 
         Args:
-            llm_provider: LLM provider to use for evaluation (LLM-as-judge).
+            llm_provider: LLM provider used for generation (for reference).
+            openai_api_key: OpenAI API key for the RAGAS judge LLM.
         """
         self.llm_provider = llm_provider
+        self.openai_api_key = openai_api_key
 
     def evaluate(
         self,
@@ -70,11 +72,11 @@ class GenerationEvaluator:
         # Convert RAG results to RAGAS dataset format
         dataset = self._create_ragas_dataset(rag_results)
 
-        # Create RAGAS LLM wrapper
-        # Note: RAGAS expects specific LLM interfaces - we may need to adapt
-        # For now, we'll use the default RAGAS LLM (which uses OpenAI)
-        # In a production setting, we'd create a custom RAGAS LLM wrapper
-        # around our BaseLLMProvider interface
+        # RAGAS and LangChain read OPENAI_API_KEY from os.environ at every layer.
+        # Set it explicitly from config so it's available regardless of how the process was launched.
+        if not self.openai_api_key:
+            raise ValueError("openai_api_key is required for RAGAS evaluation")
+        os.environ["OPENAI_API_KEY"] = self.openai_api_key
 
         # Evaluate using RAGAS
         try:
@@ -83,25 +85,20 @@ class GenerationEvaluator:
                 metrics=[faithfulness, answer_relevancy],
             )
 
-            # Extract scores
-            faithfulness_scores = results["faithfulness"]
-            answer_relevance_scores = results["answer_relevancy"]
+            # In RAGAS 0.1.x, results is a dict subclass: results["metric"] = aggregate float.
+            # results.scores is a HuggingFace Dataset with per-sample columns.
+            avg_faithfulness = float(results["faithfulness"])
+            avg_answer_relevance = float(results["answer_relevancy"])
 
-            # Convert to lists if needed
-            if not isinstance(faithfulness_scores, list):
-                faithfulness_scores = faithfulness_scores.tolist()
-            if not isinstance(answer_relevance_scores, list):
-                answer_relevance_scores = answer_relevance_scores.tolist()
-
-            avg_faithfulness = sum(faithfulness_scores) / len(faithfulness_scores)
-            avg_answer_relevance = sum(answer_relevance_scores) / len(answer_relevance_scores)
+            per_faithfulness = [float(x) if x is not None else 0.0 for x in results.scores["faithfulness"]]
+            per_answer_relevance = [float(x) if x is not None else 0.0 for x in results.scores["answer_relevancy"]]
 
             return GenerationMetrics(
                 faithfulness=avg_faithfulness,
                 answer_relevance=avg_answer_relevance,
                 num_samples=len(rag_results),
-                per_sample_faithfulness=faithfulness_scores,
-                per_sample_answer_relevance=answer_relevance_scores,
+                per_sample_faithfulness=per_faithfulness,
+                per_sample_answer_relevance=per_answer_relevance,
             )
 
         except Exception as e:
@@ -143,15 +140,17 @@ class GenerationEvaluator:
 def compute_generation_metrics(
     rag_results: list[RAGResult],
     llm_provider: BaseLLMProvider,
+    openai_api_key: str | None = None,
 ) -> GenerationMetrics:
     """Convenience function to compute generation metrics.
 
     Args:
         rag_results: List of RAG results to evaluate.
-        llm_provider: LLM provider for evaluation.
+        llm_provider: LLM provider used for generation.
+        openai_api_key: OpenAI API key for the RAGAS judge LLM.
 
     Returns:
         GenerationMetrics with faithfulness and answer relevance.
     """
-    evaluator = GenerationEvaluator(llm_provider=llm_provider)
+    evaluator = GenerationEvaluator(llm_provider=llm_provider, openai_api_key=openai_api_key)
     return evaluator.evaluate(rag_results)
